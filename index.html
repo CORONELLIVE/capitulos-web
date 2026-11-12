@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="es">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Capítulos</title>
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="apple-touch-icon" href="./icon-192.png">
+<meta name="theme-color" content="#101113">
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#101113;color:#f5f5f5;font:16px system-ui}
+main{max-width:540px;margin:auto;padding:24px 16px}
+h1{margin:0 0 20px;font-size:2rem}
+button,a{font:inherit;color:inherit}
+button{border:0;cursor:pointer}
+#resume{width:100%;margin-bottom:12px;padding:14px;background:#353942;border-radius:10px}
+#list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+#list button{background:#24262b;text-align:left;border-radius:10px;padding:16px 12px;min-height:54px}
+#list button:hover,#list button:focus-visible{background:#383b43}
+#watch{position:fixed;inset:0;background:#000;display:grid;place-items:center}
+[hidden]{display:none!important}
+#screen{width:min(100%,960px)}
+.rumble-player{width:100%;aspect-ratio:16/9}
+iframe{display:block;width:100%;aspect-ratio:16/9;border:0}
+nav{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;padding:12px;position:absolute;bottom:max(12px,env(safe-area-inset-bottom));width:min(100%,960px);transition:opacity .2s}
+nav button,nav a{display:grid;place-items:center;min-height:44px;padding:8px 10px;border-radius:8px;background:#25272a;text-decoration:none}
+nav button:disabled{opacity:.35}
+#bottom-zone{position:absolute;inset:auto 0 0;height:76px;touch-action:none}
+nav.asleep{opacity:0;pointer-events:none}
+nav.asleep:focus-within{opacity:1;pointer-events:auto}
+@media(max-height:460px){iframe{max-height:100dvh}}
+</style>
+<main id="menu"><h1>Capítulos</h1><button id="resume" type="button" hidden></button><div id="list"></div></main>
+<section id="watch" hidden aria-label="Reproductor">
+  <div id="screen"></div>
+  <div id="bottom-zone" aria-hidden="true"></div>
+  <nav id="controls" aria-label="Controles de capítulos">
+    <button id="back" type="button">Volver a episodios</button>
+
+
+    <button id="next" type="button">Siguiente</button>
+  </nav>
+</section>
+<script>
+const episodes = [
+  {
+    "url": "https://rumble.com/v6zkgbq-lrs1.html",
+    "embed": "https://rumble.com/embed/v6xdpt6/"
+  },
+  {
+    "url": "https://rumble.com/v6zkgbo-lrs2.html",
+    "embed": "https://rumble.com/embed/v6xdpt4/"
+  },
+  {
+    "url": "https://rumble.com/v6zkgb8-lrs3.html",
+    "embed": "https://rumble.com/embed/v6xdpso/"
+  },
+  {
+    "url": "https://rumble.com/v6zkgai-lrs4.html",
+    "embed": "https://rumble.com/embed/v6xdpry/"
+  },
+  {
+    "url": "https://rumble.com/v6zkh78-lrs5.html",
+    "embed": "https://rumble.com/embed/v6xdqoo/"
+  },
+  {
+    "url": "https://rumble.com/v6zkh82-lrs6.html",
+    "embed": "https://rumble.com/embed/v6xdqpi/"
+  },
+  {
+    "url": "https://rumble.com/v6zkh8q-lrs7.html",
+    "embed": "https://rumble.com/embed/v6xdqq6/"
+  },
+  {
+    "url": "https://rumble.com/v6zkh88-lrs8.html",
+    "embed": "https://rumble.com/embed/v6xdqpo/"
+  },
+  {
+    "url": "https://rumble.com/v6zkhvw-lrs9.html",
+    "embed": "https://rumble.com/embed/v6xdrdc/"
+  },
+  {
+    "url": "https://rumble.com/v6zkhuw-lrs10.html",
+    "embed": "https://rumble.com/embed/v6xdrcc/"
+  },
+  {
+    "url": "https://rumble.com/v6zkhww-lrs11.html",
+    "embed": "https://rumble.com/embed/v6xdrec/"
+  },
+  {
+    "url": "https://rumble.com/v6zkhxa-lrs12.html",
+    "embed": "https://rumble.com/embed/v6xdreq/"
+  },
+  {
+    "url": "https://rumble.com/v6zkipg-lrs13.html",
+    "embed": "https://rumble.com/embed/v6xds6w/"
+  },
+  {
+    "url": "https://rumble.com/v6zkipo-lrs14.html",
+    "embed": "https://rumble.com/embed/v6xds74/"
+  },
+  {
+    "url": "https://rumble.com/v6zkirg-lrs15.html",
+    "embed": "https://rumble.com/embed/v6xds8w/"
+  },
+  {
+    "url": "https://rumble.com/v6zkitk-lrs16.html",
+    "embed": "https://rumble.com/embed/v6xdsb0/"
+  }
+];
+const get = id => document.getElementById(id);
+const menu = get('menu');
+const watch = get('watch');
+const screen = get('screen');
+const controls = get('controls');
+const next = get('next');
+let current = 0;
+let timer;
+let playerNumber = 0;
+let stopPlayer = () => {};
+let rumbleScript;
+
+function loadRumble() {
+  if (!rumbleScript) {
+    window.Rumble ??= function (...args) { window.Rumble._.push(args); };
+    window.Rumble._ ??= [];
+    rumbleScript = new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = 'https://rumble.com/embedJS/u3/';
+      script.onload = resolve;
+      script.onerror = reject;
+      document.head.append(script);
+    });
+  }
+  return rumbleScript;
+}
+let progress = { last: null, watched: [], positions: {} };
+try {
+  const saved = JSON.parse(localStorage.getItem('lrs-progress-v1'));
+  if (saved && Array.isArray(saved.watched)) progress = saved;
+} catch {}
+progress.positions ??= {};
+const resume = get('resume');
+
+function formatTime(seconds) {
+  return Math.floor(seconds / 60) + ':' + String(seconds % 60).padStart(2, '0');
+}
+
+function updateProgress() {
+  const hasLast = Number.isInteger(progress.last) && !!episodes[progress.last];
+  resume.hidden = !hasLast;
+  if (hasLast) {
+    const position = progress.positions[progress.last];
+    resume.textContent = 'Continuar con el capítulo ' + (progress.last + 1)
+      + (position ? ' · ' + formatTime(position) : '');
+  }
+  Array.from(get('list').children).forEach((button, index) => {
+    button.textContent = 'Capítulo ' + (index + 1)
+      + (index === episodes.length - 1 ? ' · Final' : '')
+      + (progress.watched.includes(index) ? ' · Visto' : '');
+  });
+}
+
+function saveProgress() {
+  try {
+    localStorage.setItem('lrs-progress-v1', JSON.stringify(progress));
+  } catch {}
+  updateProgress();
+}
+
+function showControls() {
+  controls.classList.remove('asleep');
+  clearTimeout(timer);
+  timer = setTimeout(() => controls.classList.add('asleep'), 3000);
+}
+
+function openEpisode(index) {
+  stopPlayer();
+  current = index;
+  const episode = episodes[index];
+  const frame = document.createElement('iframe');
+  frame.title = 'Capítulo ' + (index + 1);
+  const source = new URL(episode.embed);
+  const position = progress.positions[index];
+  if (position) source.searchParams.set('start', position);
+  frame.src = source.href;
+  frame.allow = 'autoplay; fullscreen; picture-in-picture';
+  frame.allowFullscreen = true;
+  const mount = document.createElement('div');
+  mount.className = 'rumble-player';
+  mount.id = 'rumble-player-' + (++playerNumber);
+  screen.replaceChildren(mount);
+
+  const listeners = new AbortController();
+  let video;
+  let played = false;
+  let fallbackTimer;
+  const record = () => {
+    if (!played || !video || !Number.isFinite(video.currentTime) || video.seeking) return;
+    const seconds = Math.floor(video.currentTime);
+    if (seconds !== progress.positions[index]) {
+      progress.positions[index] = seconds;
+      saveProgress();
+    }
+  };
+  const observer = new MutationObserver(() => {
+    const element = mount.querySelector('video');
+    if (!element || element === video) return;
+    video = element;
+    const options = { signal: listeners.signal };
+    video.addEventListener('playing', () => { played = true; }, options);
+    for (const event of ['timeupdate', 'pause', 'seeked']) {
+      video.addEventListener(event, record, options);
+    }
+  });
+  observer.observe(mount, { childList: true, subtree: true });
+  const fallback = () => {
+    if (!mount.isConnected) return;
+    observer.disconnect();
+    listeners.abort();
+    screen.replaceChildren(frame);
+  };
+  fallbackTimer = setTimeout(() => {
+    if (!video) fallback();
+  }, 9000);
+  stopPlayer = () => {
+    record();
+    clearTimeout(fallbackTimer);
+    observer.disconnect();
+    listeners.abort();
+  };
+  loadRumble().then(() => {
+    if (!mount.isConnected) return;
+    const id = source.pathname.split('/')[2];
+    window.Rumble('play', { video: { id, start: position || 0 }, div: mount.id, resize: 'full' });
+  }).catch(fallback);
+  progress.last = index;
+  saveProgress();
+  next.hidden = index === episodes.length - 1;
+  menu.hidden = true;
+  watch.hidden = false;
+  showControls();
+}
+
+episodes.forEach((episode, index) => {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.addEventListener('click', () => openEpisode(index));
+  get('list').append(button);
+});
+
+updateProgress();
+resume.addEventListener('click', () => openEpisode(progress.last));
+get('back').addEventListener('click', () => {
+  clearTimeout(timer);
+  watch.hidden = true;
+  stopPlayer();
+  screen.replaceChildren();
+  menu.hidden = false;
+  get('list').children[current].focus();
+});
+next.addEventListener('click', () => {
+  if (current + 1 < episodes.length) {
+    next.blur();
+    openEpisode(current + 1);
+  }
+});
+let swipeStart;
+watch.addEventListener('touchstart', event => {
+  swipeStart = event.touches[0].clientY;
+}, { passive: true });
+watch.addEventListener('touchmove', event => {
+  const y = event.touches[0].clientY;
+  if (Math.abs(y - swipeStart) > 24 || y >= window.innerHeight - 76) showControls();
+}, { passive: true });
+get('bottom-zone').addEventListener('pointerenter', showControls);
+watch.addEventListener('pointerdown', showControls);
+watch.addEventListener('wheel', showControls, { passive: true });
+
+if (location.protocol.startsWith('http') && 'serviceWorker' in navigator) {
+  navigator.serviceWorker.register('./sw.js').catch(() => {});
+}
+</script>
+</html>
+
+
+
+
+
